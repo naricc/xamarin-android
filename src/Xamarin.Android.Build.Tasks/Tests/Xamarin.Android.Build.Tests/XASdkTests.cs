@@ -136,15 +136,18 @@ namespace Xamarin.Android.Build.Tests
 
 			var apk = Path.Combine (outputPath, "UnnamedProject.UnnamedProject.apk");
 			FileAssert.Exists (apk);
+
+			bool expectEmbededAssembies = !(CommercialBuildAvailable && !isRelease);
+
 			using (var zip = ZipHelper.OpenZip (apk)) {
 				var rids = runtimeIdentifiers.Split (';');
 				foreach (var abi in rids.Select (MonoAndroidHelper.RuntimeIdentifierToAbi)) {
 					Assert.IsTrue (zip.ContainsEntry ($"lib/{abi}/libmonodroid.so"), "libmonodroid.so should exist.");
 					Assert.IsTrue (zip.ContainsEntry ($"lib/{abi}/libmonosgen-2.0.so"), "libmonosgen-2.0.so should exist.");
 					if (rids.Length > 1) {
-						Assert.IsTrue (zip.ContainsEntry ($"assemblies/{abi}/System.Private.CoreLib.dll"), "System.Private.CoreLib.dll should exist.");
+						Assert.AreEqual (expectEmbededAssembies, zip.ContainsEntry ($"assemblies/{abi}/System.Private.CoreLib.dll"), $"assemblies/{abi}/System.Private.CoreLib.dll should {(expectEmbededAssembies ? "" : "not")} exist.");
 					} else {
-						Assert.IsTrue (zip.ContainsEntry ("assemblies/System.Private.CoreLib.dll"), "System.Private.CoreLib.dll should exist.");
+						Assert.AreEqual (expectEmbededAssembies, zip.ContainsEntry ("assemblies/System.Private.CoreLib.dll"), $"assemblies/System.Private.CoreLib.dll should {(expectEmbededAssembies ? "" : "not")} exist.");
 					}
 				}
 			}
@@ -177,13 +180,21 @@ namespace Xamarin.Android.Build.Tests
 			FileAssert.Exists (apk);
 			FileAssert.Exists (apkSigned);
 
-			Assert.IsTrue (dotnet.Publish (parameters: new [] { "AndroidPackageFormat=aab" }), "second `dotnet publish` should succeed");
-			FileAssert.DoesNotExist (apk);
-			FileAssert.DoesNotExist (apkSigned);
+			Assert.AreEqual (isRelease, dotnet.Publish (parameters: new [] { "AndroidPackageFormat=aab" }), $"second `dotnet publish` should {(isRelease ? "" : "not")} succeed");
 			var aab = Path.Combine (publishDirectory, $"{proj.PackageName}.aab");
 			var aabSigned = Path.Combine (publishDirectory, $"{proj.PackageName}-Signed.aab");
-			FileAssert.Exists (aab);
-			FileAssert.Exists (aabSigned);
+			if (isRelease) {
+				FileAssert.DoesNotExist (apk);
+				FileAssert.DoesNotExist (apkSigned);
+				FileAssert.Exists (aab);
+				FileAssert.Exists (aabSigned);
+			} else {
+				// The build failed so the apk's don't get cleaned up
+				FileAssert.Exists (apk);
+				FileAssert.Exists (apkSigned);
+				FileAssert.DoesNotExist (aab);
+				FileAssert.DoesNotExist (aabSigned);
+			}
 		}
 
 		[Test]
